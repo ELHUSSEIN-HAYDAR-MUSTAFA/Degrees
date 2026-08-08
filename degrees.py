@@ -1,7 +1,8 @@
 import csv
 import sys
 
-from util import Node, StackFrontier, QueueFrontier
+from util import Node, QueueFrontier, StackFrontier
+
 
 # Maps names to a set of corresponding person_ids
 names = {}
@@ -24,7 +25,7 @@ def load_data(directory):
             people[row["id"]] = {
                 "name": row["name"],
                 "birth": row["birth"],
-                "movies": set()
+                "movies": set(),
             }
             if row["name"].lower() not in names:
                 names[row["name"].lower()] = {row["id"]}
@@ -38,18 +39,16 @@ def load_data(directory):
             movies[row["id"]] = {
                 "title": row["title"],
                 "year": row["year"],
-                "stars": set()
+                "stars": set(),
             }
 
     # Load stars
     with open(f"{directory}/stars.csv", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            try:
-                people[row["person_id"]]["movies"].add(row["movie_id"])
-                movies[row["movie_id"]]["stars"].add(row["person_id"])
-            except KeyError:
-                pass
+            if row["id"] in people and row["movie_id"] in movies:
+                people[row["id"]]["movies"].add(row["movie_id"])
+                movies[row["movie_id"]]["stars"].add(row["id"])
 
 
 def main():
@@ -71,6 +70,7 @@ def main():
 
     path = shortest_path(source, target)
 
+    print("Calculating path...")
     if path is None:
         print("Not connected.")
     else:
@@ -91,9 +91,41 @@ def shortest_path(source, target):
 
     If no possible path, returns None.
     """
+    # Initialize the frontier to the starting position
+    start_node = Node(state=source, parent=None, action=None)
+    frontier = QueueFrontier()
+    frontier.add(start_node)
 
-    # TODO
-    raise NotImplementedError
+    # Initialize an empty set to keep track of explored nodes
+    explored = set()
+
+    # Keep looping until frontier is empty
+    while True:
+
+        # If nothing left in frontier, then no path
+        if frontier.empty():
+            return None
+
+        # Choose a node from the frontier
+        node = frontier.remove()
+
+        # If node is the target, then we have a path
+        if node.state == target:
+            path = []
+            while node.parent is not None:
+                path.append((node.action, node.state))
+                node = node.parent
+            path.reverse()
+            return path
+
+        # Mark node as explored
+        explored.add(node.state)
+
+        # Add neighbors to frontier
+        for movie_id, person_id in neighbors_for_person(node.state):
+            if not frontier.contains_state(person_id) and person_id not in explored:
+                child = Node(state=person_id, parent=node, action=movie_id)
+                frontier.add(child)
 
 
 def person_id_for_name(name):
@@ -101,7 +133,7 @@ def person_id_for_name(name):
     Returns the IMDB id for a person's name,
     resolving ambiguities as needed.
     """
-    person_ids = list(names.get(name.lower(), set()))
+    person_ids = names.get(name.lower(), set())
     if len(person_ids) == 0:
         return None
     elif len(person_ids) > 1:
@@ -116,10 +148,10 @@ def person_id_for_name(name):
             if person_id in person_ids:
                 return person_id
         except ValueError:
-            pass
+            return None
         return None
     else:
-        return person_ids[0]
+        return list(person_ids)[0]
 
 
 def neighbors_for_person(person_id):
